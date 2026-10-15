@@ -416,7 +416,7 @@ function insights() {
   return out.sort((x, y) => rank[y.sev] - rank[x.sev] || y.score - x.score);
 }
 const STALE_DAYS = 10;
-const daysSince = isoDay => Math.max(0, Math.floor((Date.now() - D(isoDay)) / 86400000));
+const daysSince = isoDay => META.demo ? 0 : Math.max(0, Math.floor((Date.now() - D(isoDay)) / 86400000));
 function renderInsightList(list, max) {
   if (!list.length) return empty('Not enough data in this view for evidence-based insights.');
   const sym = { pos: '↑', neg: '!', warn: '!', info: 'i' };
@@ -651,7 +651,7 @@ function exportCsv(rows, name) {
  * Transaction drawer (details + fix category + review alert)
  * ======================================================================= */
 const BY_ID = new Map();
-const SERVED = () => location.protocol === 'http:' || location.protocol === 'https:';
+const SERVED = () => !META.demo && (location.protocol === 'http:' || location.protocol === 'https:');
 function openDrawer(id) {
   const t = BY_ID.get(id); if (!t) return;
   const [cl] = confLabel(t.conf);
@@ -678,7 +678,7 @@ function openDrawer(id) {
       + '<label class="small"><input type="radio" name="dzScope" value="merchant"> Everything from ' + esc(t.merchant) + ' (' + (same.length + 1) + ' transactions)</label>'
       + '<div style="display:flex;gap:8px"><button class="btn" type="button" id="dzSave">Save</button>' + (t.ovr ? '<button class="btn ghost" type="button" id="dzReset">Undo my change</button>' : '') + '</div>'
       + '<div class="small muted">Saved to overrides.json. Your fixes survive re-imports and beat the rules in rules.py.</div></div>'
-      : '<div class="small muted">Open the dashboard through <code>python3 serve.py</code> to save changes.</div>')
+      : '<div class="small muted">' + (META.demo ? 'Read-only demo: in the real app you can change the category here, for one transaction or everything from this merchant.' : 'Open the dashboard through <code>python3 serve.py</code> to save changes.') + '</div>')
     + '<h3 class="card-t" style="margin:16px 0 6px">Other transactions with ' + esc(t.merchant) + '</h3>'
     + (same.length ? '<div class="row-list">' + same.slice(0, 5).map(x => txLine(x)).join('') + '</div><div style="margin-top:8px;display:flex;gap:12px;flex-wrap:wrap"><button class="btn link" type="button" id="dzAll">See all ' + (same.length + 1) + ' →</button><button class="btn link" type="button" id="dzCp">Open in Counterparties →</button></div>' : '<div class="muted small">None.</div>');
   $('#drawer').classList.add('on'); $('#scrim').classList.add('on'); $('#drawer').setAttribute('aria-hidden', 'false');
@@ -694,7 +694,6 @@ function openDrawer(id) {
 function closeDrawer() { $('#drawer').classList.remove('on'); $('#scrim').classList.remove('on'); $('#drawer').setAttribute('aria-hidden', 'true'); }
 
 async function api(path, body) {
-  if (location.hostname.endsWith('github.io')) throw new Error('This is a static demo (dummy data) — editing and uploads need the real app running locally.');
   const r = await fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body || {}), credentials: 'same-origin' });
   let j = {}; try { j = await r.json(); } catch (e) { /* non-JSON error page */ }
   if (!r.ok || !j.ok) { const err = new Error(j.error || ('Server error ' + r.status)); err.data = j; throw err; }
@@ -1314,6 +1313,7 @@ function modal(title, body, buttons) {
 function closeModal() { $('#modal').classList.remove('on'); if (!$('#drawer').classList.contains('on')) $('#scrim').classList.remove('on'); }
 let PENDING = null;
 function pickFile() {
+  if (META.demo) { modal('Demo mode', '<p>This is a read-only demo with made-up data. In the real app, this button uploads a bank statement (CSV, XLS or PDF), removes duplicates and checks the balances.</p>', [{ label: 'OK', on: closeModal }]); return; }
   if (!SERVED()) { modal('Add a statement', '<p>Uploading works when the dashboard runs through the local server:</p><p><code>cd ~/Downloads/finance-app && python3 serve.py</code></p>', [{ label: 'OK', on: closeModal }]); return; }
   $('#fileInput').value = ''; $('#fileInput').click();
 }
@@ -1471,7 +1471,7 @@ function init() {
   $('#exportBtn').onclick = () => { const r = effective(range()); exportCsv(r ? rowsIn(r) : [], 'findash-' + (r ? r.from + '_' + r.to : 'empty') + '.csv'); };
   $('#txExport').onclick = () => exportCsv(txFiltered(), 'findash-filtered.csv');
   $('#refreshBtn').onclick = async () => {
-    if (!SERVED()) { toast('Re-import works when running python3 serve.py'); return; }
+    if (!SERVED()) { toast(META.demo ? 'Demo mode: re-import is disabled' : 'Re-import works when running python3 serve.py'); return; }
     const b = $('#refreshBtn'); b.disabled = true;
     try { const j = await api('/api/refresh'); saveState(); toast('Rebuilt: ' + (j.unique || 0).toLocaleString('en-IN') + ' transactions'); setTimeout(() => location.reload(), 500); }
     catch (e) { toast('Re-import failed: ' + e.message); b.disabled = false; }
